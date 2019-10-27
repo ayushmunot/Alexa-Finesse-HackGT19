@@ -6,8 +6,8 @@
 </p>
 
 ## Demo
-<a href="https://www.youtube.com/embed/KR08cri1SY0" target="_blank"><img src="/echo.jpg" 
-alt="Amazon Echo" width="240" height="180" border="10" />Click on Image for Demo Video</a>
+<a style = 'text-align: center' href="https://www.youtube.com/embed/KR08cri1SY0" target="_blank"><img src="/echo.jpg" 
+alt="Amazon Echo" width="300" height="300" border="10" />Click on Image for Demo Video</a>
 
 
 ## Inspiration
