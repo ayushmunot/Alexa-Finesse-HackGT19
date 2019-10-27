@@ -5,6 +5,11 @@ import firebase_admin
 from firebase_admin import db
 from firebase_admin import credentials
 import json
+from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.tag import pos_tag
+import requests
+import math
+from bs4 import BeautifulSoup
 
 config = {
         "type": "service_account",
@@ -23,6 +28,16 @@ default_app = firebase_admin.initialize_app(cred, options = {
     'databaseURL': "https://hackgt-finesse.firebaseio.com/"
     })
 month_ref = db.reference('Monthly')
+
+Groceries = ["Publix", "Krogers", "CVS", "GoPuff", "FreshMarket"]
+Restaurant = ["UberEats", "Doordash", "Grubhub", "Subway", "HalalGuys", "Intermezzo", "TacoBell", "InsomniaCookies", "Starbucks"]
+Home = ["HomeDepot", "Walmart", "Target"]
+Entertainment = ["Netflix", "PrimeVideo", "Spotify"]
+Education = ["BN", "Blick"]
+Transportation =  ["Uber", "Lyft", "Bird", "Lime"]
+
+
+
 monthly_data = {}
 
 def get_current_balance():
@@ -76,7 +91,154 @@ def set_budget(budget, month):
         })
 
 def get_budget(month):
-    return month_ref.child(month).get()
+    return month_ref.child(month).child('monthly_budget').get()
+
+def distribute(month):
+    transaction_data = get_transaction_data()
+    distribution = {}
+    month_dict = {}
+    for month in transaction_data:
+        total_spent = 0.0
+        for t_id in transaction_data[month]:
+            category = read_description(transaction_data[month][t_id]['description'])
+            total_spent += transaction_data[month][t_id]['amount']
+            if category in distribution.keys():
+                distribution[category] += transaction_data[month][t_id]['amount']
+            else:
+                distribution[category] = transaction_data[month][t_id]['amount']
+        set_spending(total_spent, month)
+        for key in distribution.keys():
+            distribution[key] = math.ceil((distribution[key] / total_spent) * 100)
+        month_dict[month] = distribution
+    return distribution
+
+def set_spending(val, month):
+    month_ref.child(month).update({
+        'total_spending' : val
+        })
+
+def get_update(month):
+    curr = get_current_balance()
+    limit = get_budget(month)
+    if limit <= curr:
+       return "Too bad! You're already past the limit." #plays sad song
+    elif limit - curr <= 100:
+        return "You're almost there! Start saving and you'll be fine."
+    elif limit - curr > 100:
+        return "Amazing, you're a pro budgeter!"
 
 
+def get_analysis(month):
+    distribution = distribute(month)
+    temp = []
+    temp.append(sorted(distribution.items(), key = 
+             lambda kv:(kv[1], kv[0])))  
+    top_expend = temp[0][-1]
+    second_expend = temp[0][-2]
+    third_expend = temp[0][-3]
+    toReturn = "Based on your expenditure in " + month + " you have spent " + str(top_expend[1]) + " percent on " + top_expend[0] + ", " + str(second_expend[1]) + " percent on " + second_expend[0] + ", " + str(third_expend[1]) + " percent on " + third_expend[0] + " and rest on others."
+    return toReturn
 
+def get_advice(month):
+     distribution = distribute(month)
+     temp = []
+     temp.append(sorted(distribution.items(), key = lambda kv:(kv[1], kv[0]))) 
+     top_expend = temp[0][-1]
+     second_expend = temp[0][-2]
+     catalog = {"Grocery": "Food", "Entertainment": "Lifestyle", "Restaurant" : "Food", "Home": "Utilities", "Education": "Education", "Transportation": "Transportation", "Miscellaneous": "Miscellaneous"}
+     toReturn = ""
+     print(catalog[top_expend[0]])
+     if top_expend[1] >= 30:
+         toReturn += "You are spending way too much on " + top_expend[0] + ". Please consider cutting down. "
+     else:
+        toReturn += "Your monthly distribution of money looks fine! "
+     if catalog[top_expend[0]] == catalog[second_expend[0]] :
+         toReturn += "Your expenditure on " + top_expend[0] + " and " + second_expend[0] + " seems similar in nature. You should rethink your distribtion."
+     else:
+         toReturn += "Your finances are sorted."
+     return toReturn
+    
+    
+
+#     distribution = distribute()
+#     # if the top distribution is >50% then say "You're spending too much on this"
+#     #Get the top two distributions
+#     #if they match the same parent category - advice on reduing each a bit
+#     # else say - your finance look sorted
+
+def read_description(description):
+    text = word_tokenize(description)
+    tagged_tokens = pos_tag(text)
+    noun_tokens = []
+    for tup in tagged_tokens:
+        if tup[1] == "NNP":
+            noun_tokens.append(tup[0])
+    return categorize(noun_tokens[0])
+
+
+def categorize(token):
+    global Groceries
+    global Restaurant
+    global Home
+    global Entertainment
+    global Education
+    global Transportation
+    category = ""
+    if token in Groceries:
+        category = "Grocery"
+    elif token in Restaurant:
+        category = "Restaurant"
+    elif token in Home:
+        category = "Home"
+    elif token in Transportation:
+        category = "Transportation"
+    elif token in Entertainment:
+        category = "Entertainment"
+    elif token in Education:
+        category = "Education"
+    else:
+        category = "Miscellaenous"
+    return category
+
+def scrape_unidays_for_groceries():
+    global Groceries
+    response = requests.get("https://www.myunidays.com/US/en-US/category/all-food_groceries")
+    html = response.text
+    soup = BeautifulSoup(html, "html.parser")
+    scrape = soup.find(class_="tile__group")
+    output = scrape.get_text().split()
+    word_l = []
+    for word in output:
+        if word in Groceries:
+            word_l.append(word)
+            break
+    return word_l[0]
+
+def scrape_unidays_for_restaurants():
+    global Restaurant
+    response = requests.get("https://www.myunidays.com/US/en-US/category/all-food_in-store-and-delivery")
+    html = response.text
+    soup = BeautifulSoup(html, "html.parser")
+    scrape = soup.find(class_="tile__group")
+    output = scrape.get_text().split()
+    word_l = []
+    for word in output:
+        if word in Restaurant:
+            word_l.append(word)
+            break
+    return word_l[0]
+
+def get_recurring():
+    recurring = set()
+    t_data = get_transaction_data()
+    for month in t_data:
+        for t_id in t_data[month]:
+            if 'Non' not in t_data[month][t_id]['rec']:
+                text = word_tokenize(t_data[month][t_id]['description'])
+                tagged_tokens = pos_tag(text)
+                for tup in tagged_tokens:
+                    if tup[1] == "NNP":
+                        recurring.add(tup[0])
+    return recurring
+            
+ 
