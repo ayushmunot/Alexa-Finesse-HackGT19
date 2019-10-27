@@ -1,5 +1,5 @@
 # HackGT
-# Project for HackGT'19
+# Finesse - Project for HackGT'19
 
 <p align="center">
   <img width="240" height="240" src="/logo.png">
